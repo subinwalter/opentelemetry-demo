@@ -237,43 +237,32 @@ class WebsiteUser(HttpUser):
 browser_traffic_enabled = os.environ.get("LOCUST_BROWSER_TRAFFIC_ENABLED", "").lower() in ("true", "yes", "on")
 
 if browser_traffic_enabled:
+    logging.info("Browser traffic enabled - registering WebsiteBrowserUser")
     class WebsiteBrowserUser(PlaywrightUser):
-        headless = True  # to use a headless browser, without a GUI
-
-        def __init__(self, *args, **kwargs):
-            super().__init__(*args, **kwargs)
-            self.tracer = trace.get_tracer(__name__)
+        headless = True
 
         @task
         @pw
         async def open_cart_page_and_change_currency(self, page: PageWithRetry):
-            with self.tracer.start_as_current_span("browser_change_currency", context=Context()):
-                try:
-                    page.on("console", lambda msg: print(msg.text))
-                    await page.route('**/*', add_baggage_header)
-                    await page.goto("/cart", wait_until="domcontentloaded")
-                    await page.select_option('[name="currency_code"]', 'CHF')
-                    await page.wait_for_timeout(2000)  # giving the browser time to export the traces
-                    logging.info("Currency changed to CHF")
-                except Exception as e:
-                    logging.error(f"Error in change currency task: {str(e)}")
+            page.on("console", lambda msg: print(msg.text))
+            await page.route('**/*', add_baggage_header)
+            await page.goto("/cart", wait_until="domcontentloaded")
+            await page.select_option('[name="currency_code"]', 'CHF')
+            await page.wait_for_timeout(2000)
+            logging.info("Currency changed to CHF")
 
         @task
         @pw
         async def add_product_to_cart(self, page: PageWithRetry):
-            with self.tracer.start_as_current_span("browser_add_to_cart", context=Context()):
-                try:
-                    page.on("console", lambda msg: print(msg.text))
-                    await page.route('**/*', add_baggage_header)
-                    await page.goto("/", wait_until="domcontentloaded")
-                    await page.click('p:has-text("Roof Binoculars")')
-                    await page.wait_for_load_state("domcontentloaded")
-                    await page.click('button:has-text("Add To Cart")')
-                    await page.wait_for_load_state("domcontentloaded")
-                    await page.wait_for_timeout(2000)  # giving the browser time to export the traces
-                    logging.info("Product added to cart successfully")
-                except Exception as e:
-                    logging.error(f"Error in add to cart task: {str(e)}")
+            page.on("console", lambda msg: print(msg.text))
+            await page.route('**/*', add_baggage_header)
+            await page.goto("/", wait_until="domcontentloaded")
+            await page.click('p:has-text("Roof Binoculars")')
+            await page.wait_for_load_state("domcontentloaded")
+            await page.click('button:has-text("Add To Cart")')
+            await page.wait_for_load_state("domcontentloaded")
+            await page.wait_for_timeout(2000)
+            logging.info("Product added to cart successfully")
 
 async def add_baggage_header(route: Route, request: Request):
     existing_baggage = request.headers.get('baggage', '')
