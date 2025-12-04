@@ -6,20 +6,39 @@ using Microsoft.Extensions.Logging;
 using Oteldemo;
 using Microsoft.EntityFrameworkCore;
 using System.Diagnostics;
+using OpenFeature;
 
 namespace Accounting;
 
 internal class DBContext : DbContext
 {
+    private readonly IFeatureClient _featureClient;
+
     public DbSet<OrderEntity> Orders { get; set; }
     public DbSet<OrderItemEntity> CartItems { get; set; }
     public DbSet<ShippingEntity> Shipping { get; set; }
+
+    public DBContext(IFeatureClient featureClient)
+    {
+        _featureClient = featureClient;
+    }
 
     protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
     {
         var connectionString = Environment.GetEnvironmentVariable("DB_CONNECTION_STRING");
 
-        optionsBuilder.UseNpgsql(connectionString).UseSnakeCaseNamingConvention();
+        // CHAOS SCENARIO: DB Connection Storm
+        // When accountingDBConnectionStorm flag is enabled, disable connection pooling
+        // to create a new connection for each operation, rapidly exhausting PostgreSQL max_connections.
+        var dbConnectionStorm = _featureClient.GetBooleanValue("accountingDBConnectionStorm", false);
+        if (dbConnectionStorm)
+        {
+            optionsBuilder.UseNpgsql(connectionString + ";Pooling=false").UseSnakeCaseNamingConvention();
+        }
+        else
+        {
+            optionsBuilder.UseNpgsql(connectionString).UseSnakeCaseNamingConvention();
+        }
     }
 }
 
@@ -32,11 +51,13 @@ internal class Consumer : IDisposable
     private IConsumer<string, byte[]> _consumer;
     private bool _isListening;
     private DBContext? _dbContext;
+    private IFeatureClient _featureClient;
     private static readonly ActivitySource MyActivitySource = new("Accounting.Consumer");
 
-    public Consumer(ILogger<Consumer> logger)
+    public Consumer(ILogger<Consumer> logger, IFeatureClient featureClient)
     {
         _logger = logger;
+        _featureClient = featureClient;
 
         var servers = Environment.GetEnvironmentVariable("KAFKA_ADDR")
             ?? throw new InvalidOperationException("The KAFKA_ADDR environment variable is not set.");
@@ -49,7 +70,7 @@ internal class Consumer : IDisposable
            _logger.LogInformation("Connecting to Kafka: {servers}", servers);
        }
 
-        _dbContext = Environment.GetEnvironmentVariable("DB_CONNECTION_STRING") == null ? null : new DBContext();
+        _dbContext = Environment.GetEnvironmentVariable("DB_CONNECTION_STRING") == null ? null : new DBContext(_featureClient);
     }
 
     public void StartListening()

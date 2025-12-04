@@ -36,6 +36,12 @@ from metrics import (
     init_metrics
 )
 
+# CHAOS SCENARIO: OOM Memory Leak
+# Global list to hold large objects and prevent garbage collection.
+# When recommendationOOM flag is enabled, each request allocates ~10MB
+# and appends to this list, leading to OOM in ~100 requests.
+_oom_memory_leak = []
+
 cached_ids = []
 first_run = True
 
@@ -67,12 +73,20 @@ class RecommendationService(demo_pb2_grpc.RecommendationServiceServicer):
 def get_product_list(request_product_ids):
     global first_run
     global cached_ids
+    global _oom_memory_leak
     with tracer.start_as_current_span("get_product_list") as span:
         max_responses = 5
 
         # Formulate the list of characters to list of strings
         request_product_ids_str = ''.join(request_product_ids)
         request_product_ids = request_product_ids_str.split(',')
+
+        # CHAOS SCENARIO: OOM
+        # When enabled, allocate ~10MB per request and hold reference
+        # to prevent garbage collection. Should cause OOM in ~100 requests.
+        if check_feature_flag("recommendationOOM"):
+            large_object = ['X' * (1024 * 1024) for _ in range(10)]
+            _oom_memory_leak.append(large_object)
 
         # Feature flag scenario - Cache Leak
         if check_feature_flag("recommendationCacheFailure"):

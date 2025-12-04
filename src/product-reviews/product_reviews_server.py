@@ -49,11 +49,7 @@ llm_base_url = None
 llm_api_key = None
 llm_model = None
 
-# CHAOS SCENARIO: OOM Memory Leak
-# Global list to hold large objects and prevent garbage collection.
-# When productReviewsOOM flag is enabled, each request allocates ~10MB
-# and appends to this list, leading to OOM in ~100 requests.
-_oom_memory_leak = []
+
 
 # --- Define the tool for the OpenAI API ---
 tools = [
@@ -121,28 +117,12 @@ class ProductReviewService(demo_pb2_grpc.ProductReviewServiceServicer):
             status=health_pb2.HealthCheckResponse.UNIMPLEMENTED)
 
 def get_product_reviews(request_product_id):
-    global _oom_memory_leak
-
     with tracer.start_as_current_span("get_product_reviews") as span:
 
         span.set_attribute("app.product.id", request_product_id)
 
-        # Check chaos scenario feature flags
-        oom_enabled = check_feature_flag("productReviewsOOM")
-        db_connection_storm_enabled = check_feature_flag("productReviewsDBConnectionStorm")
-
-        # CHAOS SCENARIO: OOM
-        # When enabled, allocate ~10MB per request and hold reference
-        # to prevent garbage collection. Should cause OOM in ~100 requests.
-        if oom_enabled:
-            # Create a large object (~10MB): list of 10 strings, each 1MB
-            large_object = ['X' * (1024 * 1024) for _ in range(10)]
-            _oom_memory_leak.append(large_object)
-            # logger.info(f"OOM chaos: Allocated 10MB, total allocations: {len(_oom_memory_leak)} (~{len(_oom_memory_leak) * 10}MB held)")
-
         product_reviews = demo_pb2.GetProductReviewsResponse()
-        # Pass db_connection_storm flag to database layer
-        records = fetch_product_reviews_from_db(request_product_id, db_connection_storm=db_connection_storm_enabled)
+        records = fetch_product_reviews_from_db(request_product_id)
 
         for row in records:
             logger.info(f"  username: {row[0]}, description: {row[1]}, score: {str(row[2])}")

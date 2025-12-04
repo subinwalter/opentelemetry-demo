@@ -137,8 +137,8 @@
       },
       "defaultVariant": "off"
     },
-    "productReviewsOOM": {
-      "description": "Causes OOM in product-reviews service by allocating ~10MB per request and holding references to prevent GC. Targets OOM in ~100 requests.",
+    "recommendationOOM": {
+      "description": "Causes OOM in recommendation service by allocating ~10MB per request and holding references to prevent GC. Targets OOM in ~100 requests.",
       "state": "ENABLED",
       "variants": {
         "off": false,
@@ -146,8 +146,8 @@
       },
       "defaultVariant": "off"
     },
-    "productReviewsDBConnectionStorm": {
-      "description": "Creates DB connection storm by opening new connections per request without closing them, rapidly exhausting PostgreSQL max_connections.",
+    "accountingDBConnectionStorm": {
+      "description": "Creates DB connection storm in accounting service by disabling connection pooling, rapidly exhausting PostgreSQL max_connections.",
       "state": "ENABLED",
       "variants": {
         "off": false,
