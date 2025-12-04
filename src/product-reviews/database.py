@@ -25,8 +25,33 @@ def fetch_product_reviews(product_id):
     except Exception as e:
         return json.dumps({"error": str(e)})
 
-def fetch_product_reviews_from_db(request_product_id):
-
+def fetch_product_reviews_from_db(request_product_id, db_connection_storm=False):
+    """
+    Fetch product reviews from database.
+    
+    Args:
+        request_product_id: The product ID to fetch reviews for
+        db_connection_storm: When True, intentionally leaks DB connections to simulate
+                            connection storm chaos scenario
+    """
+    
+    if db_connection_storm:
+        # CHAOS SCENARIO: DB Connection Storm
+        # Intentionally open a new connection and NEVER close it.
+        # This simulates poor connection handling / no connection pooling.
+        # Each request leaks 1 connection, rapidly exhausting PostgreSQL's max_connections.
+        connection = psycopg2.connect(db_connection_str)
+        cursor = connection.cursor()
+        
+        query = "SELECT username, description, score FROM reviews.productreviews WHERE product_id= %s"
+        cursor.execute(query, (request_product_id, ))
+        records = cursor.fetchall()
+        
+        # NOTE: We intentionally DO NOT close cursor or connection!
+        # This causes the connection storm / leak
+        return records
+    
+    # Normal path with proper connection handling
     connection = None
 
     try:
@@ -51,6 +76,7 @@ def fetch_product_reviews_from_db(request_product_id):
                 connection.close()
             except Exception as e:
                 pass
+
 
 def fetch_avg_product_review_score_from_db(request_product_id):
 
