@@ -151,7 +151,7 @@ internal class Consumer : IDisposable
 
             if (dbConnectionStorm)
             {
-                await CreateConnectionStorm(order.OrderId);
+                CreateConnectionStorm(order.OrderId);
             }
         }
         catch (Exception ex)
@@ -160,7 +160,7 @@ internal class Consumer : IDisposable
         }
     }
 
-    private async Task CreateConnectionStorm(string orderId)
+    private void CreateConnectionStorm(string orderId)
     {
         _logger.LogWarning("Starting DB connection storm for order {OrderId}", orderId);
 
@@ -233,21 +233,23 @@ internal class Consumer : IDisposable
         });
 
         // Concurrent connection burst
-        var burstTasks = Enumerable.Range(0, 10).Select(async i =>
+        for (int i = 0; i < 10; i++)
         {
-            try
+            var index = i;
+            _ = Task.Run(async () =>
             {
-                using var burstContext = new DBContext(true, _logger);
-                await burstContext.Database.OpenConnectionAsync();
-                await Task.Delay(Random.Shared.Next(5000, 15000));
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Burst connection {Index} failed", i);
-            }
-        });
-
-        _ = Task.WhenAll(burstTasks);
+                try
+                {
+                    using var burstContext = new DBContext(true, _logger);
+                    await burstContext.Database.OpenConnectionAsync();
+                    await Task.Delay(Random.Shared.Next(5000, 15000));
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Burst connection {Index} failed", index);
+                }
+            });
+        }
 
         _logger.LogWarning("Connection storm initiated for order {OrderId}, total leaked: {Count}",
             orderId, _totalLeakedConnections);
