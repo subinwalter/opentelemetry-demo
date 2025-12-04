@@ -13,14 +13,16 @@ namespace Accounting;
 internal class DBContext : DbContext
 {
     private readonly IFeatureClient _featureClient;
+    private readonly ILogger? _logger;
 
     public DbSet<OrderEntity> Orders { get; set; }
     public DbSet<OrderItemEntity> CartItems { get; set; }
     public DbSet<ShippingEntity> Shipping { get; set; }
 
-    public DBContext(IFeatureClient featureClient)
+    public DBContext(IFeatureClient featureClient, ILogger? logger = null)
     {
         _featureClient = featureClient;
+        _logger = logger;
     }
 
     protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
@@ -33,10 +35,18 @@ internal class DBContext : DbContext
         var dbConnectionStorm = _featureClient.GetBooleanValue("accountingDBConnectionStorm", false);
         if (dbConnectionStorm)
         {
+            if (_logger != null)
+            {
+                Log.DbConnectionChaosMode(_logger);
+            }
             optionsBuilder.UseNpgsql(connectionString + ";Pooling=false").UseSnakeCaseNamingConvention();
         }
         else
         {
+            if (_logger != null)
+            {
+                Log.DbConnectionNormalMode(_logger);
+            }
             optionsBuilder.UseNpgsql(connectionString).UseSnakeCaseNamingConvention();
         }
     }
@@ -50,7 +60,7 @@ internal class Consumer : IDisposable
     private ILogger _logger;
     private IConsumer<string, byte[]> _consumer;
     private bool _isListening;
-    private DBContext? _dbContext;
+    private bool _hasDbConnection;
     private IFeatureClient _featureClient;
     private static readonly ActivitySource MyActivitySource = new("Accounting.Consumer");
 
@@ -70,7 +80,7 @@ internal class Consumer : IDisposable
            _logger.LogInformation("Connecting to Kafka: {servers}", servers);
        }
 
-        _dbContext = Environment.GetEnvironmentVariable("DB_CONNECTION_STRING") == null ? null : new DBContext(_featureClient);
+        _hasDbConnection = Environment.GetEnvironmentVariable("DB_CONNECTION_STRING") != null;
     }
 
     public void StartListening()
@@ -111,16 +121,18 @@ internal class Consumer : IDisposable
             var order = OrderResult.Parser.ParseFrom(message.Value);
             Log.OrderReceivedMessage(_logger, order);
 
-            if (_dbContext == null)
+            if (!_hasDbConnection)
             {
                 return;
             }
 
+            using var dbContext = new DBContext(_featureClient, _logger);
+            
             var orderEntity = new OrderEntity
             {
                 Id = order.OrderId
             };
-            _dbContext.Add(orderEntity);
+            dbContext.Add(orderEntity);
             foreach (var item in order.Items)
             {
                 var orderItem = new OrderItemEntity
@@ -133,7 +145,7 @@ internal class Consumer : IDisposable
                     OrderId = order.OrderId
                 };
 
-                _dbContext.Add(orderItem);
+                dbContext.Add(orderItem);
             }
 
             var shipping = new ShippingEntity
@@ -149,8 +161,8 @@ internal class Consumer : IDisposable
                 ZipCode = order.ShippingAddress.ZipCode,
                 OrderId = order.OrderId
             };
-            _dbContext.Add(shipping);
-            _dbContext.SaveChanges();
+            dbContext.Add(shipping);
+            dbContext.SaveChanges();
         }
         catch (Exception ex)
         {
