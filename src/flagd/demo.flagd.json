@@ -28,6 +28,15 @@
       },
       "defaultVariant": "off"
     },
+    "accountingDBConnectionStorm": {
+      "description": "Disables connection pooling in accounting service causing DB connection storm",
+      "state": "ENABLED",
+      "variants": {
+        "on": true,
+        "off": false
+      },
+      "defaultVariant": "off"
+    },
     "adManualGc": {
       "description": "Triggers full manual garbage collections in the ad service",
       "state": "ENABLED",

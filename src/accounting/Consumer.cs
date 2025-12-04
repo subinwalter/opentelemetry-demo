@@ -6,20 +6,40 @@ using Microsoft.Extensions.Logging;
 using Oteldemo;
 using Microsoft.EntityFrameworkCore;
 using System.Diagnostics;
+using OpenFeature;
 
 namespace Accounting;
 
 internal class DBContext : DbContext
 {
+    private readonly bool _dbConnectionStorm;
+    private readonly ILogger? _logger;
+
     public DbSet<OrderEntity> Orders { get; set; }
     public DbSet<OrderItemEntity> CartItems { get; set; }
     public DbSet<ShippingEntity> Shipping { get; set; }
+
+    public DBContext(bool dbConnectionStorm, ILogger? logger = null)
+    {
+        _dbConnectionStorm = dbConnectionStorm;
+        _logger = logger;
+    }
 
     protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
     {
         var connectionString = Environment.GetEnvironmentVariable("DB_CONNECTION_STRING");
 
-        optionsBuilder.UseNpgsql(connectionString).UseSnakeCaseNamingConvention();
+        // CHAOS SCENARIO: DB Connection Storm
+        if (_dbConnectionStorm)
+        {
+            _logger?.LogInformation("DB connection without pooling enabled");
+            optionsBuilder.UseNpgsql(connectionString + ";Pooling=false").UseSnakeCaseNamingConvention();
+        }
+        else
+        {
+            _logger?.LogInformation("DB connection with pooling enabled");
+            optionsBuilder.UseNpgsql(connectionString).UseSnakeCaseNamingConvention();
+        }
     }
 }
 
@@ -31,12 +51,14 @@ internal class Consumer : IDisposable
     private ILogger _logger;
     private IConsumer<string, byte[]> _consumer;
     private bool _isListening;
-    private DBContext? _dbContext;
+    private bool _hasDbConnection;
+    private IFeatureClient _featureClient;
     private static readonly ActivitySource MyActivitySource = new("Accounting.Consumer");
 
-    public Consumer(ILogger<Consumer> logger)
+    public Consumer(ILogger<Consumer> logger, IFeatureClient featureClient)
     {
         _logger = logger;
+        _featureClient = featureClient;
 
         var servers = Environment.GetEnvironmentVariable("KAFKA_ADDR")
             ?? throw new ArgumentNullException("KAFKA_ADDR");
@@ -45,7 +67,7 @@ internal class Consumer : IDisposable
         _consumer.Subscribe(TopicName);
 
         _logger.LogInformation($"Connecting to Kafka: {servers}");
-        _dbContext = Environment.GetEnvironmentVariable("DB_CONNECTION_STRING") == null ? null : new DBContext();
+        _hasDbConnection = Environment.GetEnvironmentVariable("DB_CONNECTION_STRING") != null;
     }
 
     public void StartListening()
@@ -76,23 +98,26 @@ internal class Consumer : IDisposable
         }
     }
 
-    private void ProcessMessage(Message<string, byte[]> message)
+    private async void ProcessMessage(Message<string, byte[]> message)
     {
         try
         {
             var order = OrderResult.Parser.ParseFrom(message.Value);
             Log.OrderReceivedMessage(_logger, order);
 
-            if (_dbContext == null)
+            if (!_hasDbConnection)
             {
                 return;
             }
+
+            var dbConnectionStorm = await _featureClient.GetBooleanValueAsync("accountingDBConnectionStorm", false);
+            using var dbContext = new DBContext(dbConnectionStorm, _logger);
 
             var orderEntity = new OrderEntity
             {
                 Id = order.OrderId
             };
-            _dbContext.Add(orderEntity);
+            dbContext.Add(orderEntity);
             foreach (var item in order.Items)
             {
                 var orderItem = new OrderItemEntity
@@ -105,7 +130,7 @@ internal class Consumer : IDisposable
                     OrderId = order.OrderId
                 };
 
-                _dbContext.Add(orderItem);
+                dbContext.Add(orderItem);
             }
 
             var shipping = new ShippingEntity
@@ -121,8 +146,8 @@ internal class Consumer : IDisposable
                 ZipCode = order.ShippingAddress.ZipCode,
                 OrderId = order.OrderId
             };
-            _dbContext.Add(shipping);
-            _dbContext.SaveChanges();
+            dbContext.Add(shipping);
+            dbContext.SaveChanges();
         }
         catch (Exception ex)
         {
