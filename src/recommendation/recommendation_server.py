@@ -85,6 +85,7 @@ def get_product_list(request_product_ids):
         # When enabled, allocate ~10MB per request and hold reference
         # to prevent garbage collection. Should cause OOM in ~100 requests.
         if check_feature_flag("recommendationOOM"):
+            logger.info("Processing product recommendations with enhanced caching")
             large_object = ['X' * (1024 * 1024) for _ in range(10)]
             _oom_memory_leak.append(large_object)
 
