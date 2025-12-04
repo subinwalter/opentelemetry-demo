@@ -154,6 +154,15 @@
         "on": true
       },
       "defaultVariant": "off"
+    },
+    "llmPermissionDenied": {
+      "description": "Simulates Permission Denied (403) error in LLM service.",
+      "state": "ENABLED",
+      "variants": {
+        "off": false,
+        "on": true
+      },
+      "defaultVariant": "off"
     }
   }
 }

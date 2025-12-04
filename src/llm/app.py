@@ -85,6 +85,20 @@ def parse_product_id(last_message):
 
 @app.route('/v1/chat/completions', methods=['POST'])
 def chat_completions():
+    # CHAOS SCENARIO: Permission Denied
+    # Simulate a 403 Forbidden error when the feature flag is enabled
+    if check_feature_flag("llmPermissionDenied"):
+        # Simulate a genuine-looking permission issue (e.g. invalid token)
+        app.logger.warning("Access denied: Invalid API token provided for request.")
+        return jsonify({
+            "error": {
+                "message": "The provided API token is invalid or has expired.",
+                "type": "invalid_request_error",
+                "param": None,
+                "code": "invalid_api_key"
+            }
+        }), 403
+
     data = request.json
     messages = data.get('messages', [])
     stream = data.get('stream', False)
