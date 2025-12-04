@@ -36,6 +36,9 @@ from metrics import (
     init_metrics
 )
 
+# CHAOS SCENARIO: OOM Memory Leak
+_oom_memory_leak = []
+
 cached_ids = []
 first_run = True
 
@@ -67,12 +70,20 @@ class RecommendationService(demo_pb2_grpc.RecommendationServiceServicer):
 def get_product_list(request_product_ids):
     global first_run
     global cached_ids
+    global _oom_memory_leak
     with tracer.start_as_current_span("get_product_list") as span:
         max_responses = 5
 
         # Formulate the list of characters to list of strings
         request_product_ids_str = ''.join(request_product_ids)
         request_product_ids = request_product_ids_str.split(',')
+
+        # CHAOS SCENARIO: OOM
+        if check_feature_flag("recommendationOOM"):
+            logger.info("Processing product recommendations with enhanced caching")
+            large_object = 'X' * (1024 * 1024)
+            _oom_memory_leak.append(large_object)
+            logger.info(f"Memory leak size: {len(_oom_memory_leak)} allocations")
 
         # Feature flag scenario - Cache Leak
         if check_feature_flag("recommendationCacheFailure"):
@@ -123,7 +134,7 @@ def must_map_env(key: str):
 def check_feature_flag(flag_name: str):
     # Initialize OpenFeature
     client = api.get_client()
-    return client.get_boolean_value("recommendationCacheFailure", False)
+    return client.get_boolean_value(flag_name, False)
 
 
 if __name__ == "__main__":
