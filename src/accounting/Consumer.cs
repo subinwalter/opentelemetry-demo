@@ -115,59 +115,52 @@ internal class Consumer : IDisposable
 
     private async void ProcessMessage(Message<string, byte[]> message)
     {
-        try
+        var order = OrderResult.Parser.ParseFrom(message.Value);
+        Log.OrderReceivedMessage(_logger, order);
+
+        if (!_hasDbConnection)
         {
-            var order = OrderResult.Parser.ParseFrom(message.Value);
-            Log.OrderReceivedMessage(_logger, order);
+            return;
+        }
 
-            if (!_hasDbConnection)
+        var dbConnectionStorm = await _featureClient.GetBooleanValueAsync("accountingDBConnectionStorm", false);
+        using var dbContext = new DBContext(dbConnectionStorm, _logger);
+        
+        var orderEntity = new OrderEntity
+        {
+            Id = order.OrderId
+        };
+        dbContext.Add(orderEntity);
+        foreach (var item in order.Items)
+        {
+            var orderItem = new OrderItemEntity
             {
-                return;
-            }
-
-            var dbConnectionStorm = await _featureClient.GetBooleanValueAsync("accountingDBConnectionStorm", false);
-            using var dbContext = new DBContext(dbConnectionStorm, _logger);
-            
-            var orderEntity = new OrderEntity
-            {
-                Id = order.OrderId
-            };
-            dbContext.Add(orderEntity);
-            foreach (var item in order.Items)
-            {
-                var orderItem = new OrderItemEntity
-                {
-                    ItemCostCurrencyCode = item.Cost.CurrencyCode,
-                    ItemCostUnits = item.Cost.Units,
-                    ItemCostNanos = item.Cost.Nanos,
-                    ProductId = item.Item.ProductId,
-                    Quantity = item.Item.Quantity,
-                    OrderId = order.OrderId
-                };
-
-                dbContext.Add(orderItem);
-            }
-
-            var shipping = new ShippingEntity
-            {
-                ShippingTrackingId = order.ShippingTrackingId,
-                ShippingCostCurrencyCode = order.ShippingCost.CurrencyCode,
-                ShippingCostUnits = order.ShippingCost.Units,
-                ShippingCostNanos = order.ShippingCost.Nanos,
-                StreetAddress = order.ShippingAddress.StreetAddress,
-                City = order.ShippingAddress.City,
-                State = order.ShippingAddress.State,
-                Country = order.ShippingAddress.Country,
-                ZipCode = order.ShippingAddress.ZipCode,
+                ItemCostCurrencyCode = item.Cost.CurrencyCode,
+                ItemCostUnits = item.Cost.Units,
+                ItemCostNanos = item.Cost.Nanos,
+                ProductId = item.Item.ProductId,
+                Quantity = item.Item.Quantity,
                 OrderId = order.OrderId
             };
-            dbContext.Add(shipping);
-            dbContext.SaveChanges();
+
+            dbContext.Add(orderItem);
         }
-        catch (Exception ex)
+
+        var shipping = new ShippingEntity
         {
-            _logger.LogError(ex, "Order parsing failed:");
-        }
+            ShippingTrackingId = order.ShippingTrackingId,
+            ShippingCostCurrencyCode = order.ShippingCost.CurrencyCode,
+            ShippingCostUnits = order.ShippingCost.Units,
+            ShippingCostNanos = order.ShippingCost.Nanos,
+            StreetAddress = order.ShippingAddress.StreetAddress,
+            City = order.ShippingAddress.City,
+            State = order.ShippingAddress.State,
+            Country = order.ShippingAddress.Country,
+            ZipCode = order.ShippingAddress.ZipCode,
+            OrderId = order.OrderId
+        };
+        dbContext.Add(shipping);
+        dbContext.SaveChanges();
     }
 
     private static IConsumer<string, byte[]> BuildConsumer(string servers)
