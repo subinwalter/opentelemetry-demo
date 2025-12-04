@@ -13,17 +13,22 @@ Environment.GetEnvironmentVariables()
     .FilterRelevant()
     .OutputInOrder();
 
-await Api.Instance.SetProviderAsync(new FlagdProvider());
-
 var host = Host.CreateDefaultBuilder(args)
     .ConfigureServices(services =>
     {
-        services.AddSingleton<IFeatureClient>(Api.Instance.GetClient());
+        services.AddOpenFeature(openFeatureBuilder =>
+        {
+            openFeatureBuilder
+                .AddHostedFeatureLifecycle()
+                .AddProvider(_ => new FlagdProvider());
+        });
         services.AddSingleton<Consumer>();
     })
     .Build();
 
+await host.StartAsync();
+
 var consumer = host.Services.GetRequiredService<Consumer>();
 consumer.StartListening();
 
-host.Run();
+await host.WaitForShutdownAsync();
