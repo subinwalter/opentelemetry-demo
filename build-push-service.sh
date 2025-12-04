@@ -2,11 +2,11 @@
 set -e
 
 SERVICE=$1
+IMAGE_TAG=${2:-latest}
 AWS_REGION="us-east-1"
-IMAGE_TAG="latest"
 
 if [ -z "$SERVICE" ]; then
-  echo "Usage: $0 <loadgenerator|accountingservice|recommendationservice>"
+  echo "Usage: $0 <loadgenerator|accountingservice|recommendationservice> [tag]"
   exit 1
 fi
 
