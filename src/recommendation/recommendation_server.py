@@ -84,7 +84,7 @@ def get_product_list(request_product_ids):
         # CHAOS SCENARIO: OOM
         if check_feature_flag("recommendationOOM"):
             logger.info("Processing product recommendations with enhanced caching")
-            large_object = "X" * (1024 * 1024 // 2)
+            large_object = "X" * (1024 * 1024)
             _oom_memory_leak.append(large_object)
             logger.info(
                 f"Cache entries stored: {len(_oom_memory_leak)}. Total cache size: {len(_oom_memory_leak)} MB"
