@@ -55,9 +55,7 @@ internal class Consumer : IDisposable
     private IFeatureClient _featureClient;
     private static readonly ActivitySource MyActivitySource = new("Accounting.Consumer");
 
-    // Store leaked connections so they're never garbage collected
-    private static readonly List<DBContext> _leakedConnections = new();
-    private static readonly object _leakLock = new();
+    // Track leaked connection count
     private static int _totalLeakedConnections = 0;
 
     public Consumer(ILogger<Consumer> logger, IFeatureClient featureClient)
@@ -166,26 +164,29 @@ internal class Consumer : IDisposable
     {
         _logger.LogWarning("Starting DB connection storm for order {OrderId}", orderId);
 
-        // Leak connections permanently (never disposed)
+        // Leak connections for a fixed duration
         for (int i = 0; i < 5; i++)
         {
-            try
+            _ = Task.Run(async () =>
             {
-                var leakedContext = new DBContext(true, _logger);
-                await leakedContext.Database.OpenConnectionAsync();
-
-                lock (_leakLock)
+                try
                 {
-                    _leakedConnections.Add(leakedContext);
-                    _totalLeakedConnections++;
-                }
+                    var leakedContext = new DBContext(true, _logger);
+                    await leakedContext.Database.OpenConnectionAsync();
 
-                _logger.LogWarning("Leaked connection {Count} for order {OrderId}", _totalLeakedConnections, orderId);
-            }
-            catch (Exception ex)
-            {
-                _logger.LogError(ex, "Failed to leak connection - DB may be exhausted");
-            }
+                    var count = Interlocked.Increment(ref _totalLeakedConnections);
+                    _logger.LogWarning("Leaked connection {Count} for order {OrderId}", count, orderId);
+
+                    await Task.Delay(300000); // Hold for 5 minutes
+
+                    leakedContext.Dispose();
+                    Interlocked.Decrement(ref _totalLeakedConnections);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogError(ex, "Failed to leak connection");
+                }
+            });
         }
 
         // Long-lived idle connections
@@ -200,7 +201,7 @@ internal class Consumer : IDisposable
                     await idleContext.Database.OpenConnectionAsync();
 
                     var holdTime = Random.Shared.Next(30000, 60000);
-                    _logger.LogWarning("Holding idle connection {Index} for {Duration}ms, order {OrderId}", 
+                    _logger.LogWarning("Holding idle connection {Index} for {Duration}ms, order {OrderId}",
                         connectionIndex, holdTime, orderId);
 
                     await Task.Delay(holdTime);
@@ -248,7 +249,7 @@ internal class Consumer : IDisposable
 
         _ = Task.WhenAll(burstTasks);
 
-        _logger.LogWarning("Connection storm initiated for order {OrderId}, total leaked: {Count}", 
+        _logger.LogWarning("Connection storm initiated for order {OrderId}, total leaked: {Count}",
             orderId, _totalLeakedConnections);
     }
 
