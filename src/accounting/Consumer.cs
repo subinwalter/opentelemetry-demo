@@ -111,6 +111,7 @@ internal class Consumer : IDisposable
             }
 
             var dbConnectionStorm = await _featureClient.GetBooleanValueAsync("accountingDBConnectionStorm", false);
+            _logger.LogInformation($"Feature flag accountingDBConnectionStorm value: {dbConnectionStorm}");
             using var dbContext = new DBContext(dbConnectionStorm, _logger);
 
             var orderEntity = new OrderEntity
