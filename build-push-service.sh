@@ -2,7 +2,9 @@
 set -e
 
 SERVICE=$1
-IMAGE_TAG=${2:-latest}
+BRANCH=$(git rev-parse --abbrev-ref HEAD | sed 's/[^a-zA-Z0-9._-]/-/g')
+COMMIT_SHORT=$(git rev-parse --short HEAD)
+IMAGE_TAG="${BRANCH}-${COMMIT_SHORT}"
 AWS_REGION="us-east-1"
 
 if [ -z "$SERVICE" ]; then
@@ -13,7 +15,7 @@ fi
 case $SERVICE in
   loadgenerator)
     ECR_REPO_NAME="opentelemetry-demo-loadgenerator"
-    DOCKERFILE="src/loadgenerator/Dockerfile"
+    DOCKERFILE="src/load-generator/Dockerfile"
     ;;
   accountingservice)
     ECR_REPO_NAME="opentelemetry-demo-accountingservice"
@@ -38,8 +40,10 @@ aws ecr-public get-login-password --region us-east-1 | docker login --username A
 echo "Building ${SERVICE} image for linux/amd64..."
 docker build --platform linux/amd64 -t ${ECR_REPO_NAME}:${IMAGE_TAG} -f ${DOCKERFILE} .
 docker tag ${ECR_REPO_NAME}:${IMAGE_TAG} ${ECR_URI}:${IMAGE_TAG}
+docker tag ${ECR_REPO_NAME}:${IMAGE_TAG} ${ECR_URI}:latest
 
 echo "Pushing ${SERVICE} to ECR..."
 docker push ${ECR_URI}:${IMAGE_TAG}
+docker push ${ECR_URI}:latest
 
 echo "Done! ${SERVICE} pushed to: ${ECR_URI}:${IMAGE_TAG}"
