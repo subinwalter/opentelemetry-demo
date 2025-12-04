@@ -18,7 +18,7 @@ var host = Host.CreateDefaultBuilder(args)
     {
         services.AddOpenFeature(builder =>
         {
-            builder.AddProvider(new FlagdProvider());
+            builder.AddProvider(_ => new FlagdProvider());
         });
         services.AddSingleton<Consumer>();
     })

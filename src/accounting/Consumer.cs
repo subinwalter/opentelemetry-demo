@@ -12,16 +12,16 @@ namespace Accounting;
 
 internal class DBContext : DbContext
 {
-    private readonly IFeatureClient _featureClient;
+    private readonly bool _dbConnectionStorm;
     private readonly ILogger? _logger;
 
     public DbSet<OrderEntity> Orders { get; set; }
     public DbSet<OrderItemEntity> CartItems { get; set; }
     public DbSet<ShippingEntity> Shipping { get; set; }
 
-    public DBContext(IFeatureClient featureClient, ILogger? logger = null)
+    public DBContext(bool dbConnectionStorm, ILogger? logger = null)
     {
-        _featureClient = featureClient;
+        _dbConnectionStorm = dbConnectionStorm;
         _logger = logger;
     }
 
@@ -32,8 +32,7 @@ internal class DBContext : DbContext
         // CHAOS SCENARIO: DB Connection Storm
         // When accountingDBConnectionStorm flag is enabled, disable connection pooling
         // to create a new connection for each operation, rapidly exhausting PostgreSQL max_connections.
-        var dbConnectionStorm = _featureClient.GetBooleanValue("accountingDBConnectionStorm", false);
-        if (dbConnectionStorm)
+        if (_dbConnectionStorm)
         {
             if (_logger != null)
             {
@@ -114,7 +113,7 @@ internal class Consumer : IDisposable
         }
     }
 
-    private void ProcessMessage(Message<string, byte[]> message)
+    private async void ProcessMessage(Message<string, byte[]> message)
     {
         try
         {
@@ -126,7 +125,8 @@ internal class Consumer : IDisposable
                 return;
             }
 
-            using var dbContext = new DBContext(_featureClient, _logger);
+            var dbConnectionStorm = await _featureClient.GetBooleanValueAsync("accountingDBConnectionStorm", false);
+            using var dbContext = new DBContext(dbConnectionStorm, _logger);
             
             var orderEntity = new OrderEntity
             {

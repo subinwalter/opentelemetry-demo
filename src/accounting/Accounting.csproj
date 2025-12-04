@@ -19,8 +19,9 @@
 		<PackageReference Include="Microsoft.Extensions.Logging" Version="10.0.0" />
 		<PackageReference Include="Microsoft.VisualStudio.Azure.Containers.Tools.Targets" Version="1.22.1" />
 		<PackageReference Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.0" />
-		<PackageReference Include="OpenFeature" Version="2.1.0" />
-		<PackageReference Include="OpenFeature.Contrib.Providers.Flagd" Version="0.3.2" />
+		<PackageReference Include="OpenFeature" Version="2.9.0" />
+		<PackageReference Include="OpenFeature.Hosting" Version="2.9.0" />
+		<PackageReference Include="OpenFeature.Contrib.Providers.Flagd" Version="0.3.4" />
 		<PackageReference Include="OpenTelemetry.AutoInstrumentation" Version="1.13.0" />
 	</ItemGroup>
 
