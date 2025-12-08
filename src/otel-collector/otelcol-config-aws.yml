@@ -1,0 +1,63 @@
+# Copyright The OpenTelemetry Authors
+# SPDX-License-Identifier: Apache-2.0
+
+# AWS CloudWatch OpenTelemetry Collector Configuration
+# Exports telemetry to AWS X-Ray (traces), CloudWatch Metrics, CloudWatch Logs.
+# Usage: Set OTEL_COLLECTOR_CONFIG=./src/otel-collector/otelcol-config-aws.yml
+
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: ${env:OTEL_COLLECTOR_HOST}:${env:OTEL_COLLECTOR_PORT_GRPC}
+      http:
+        endpoint: ${env:OTEL_COLLECTOR_HOST}:${env:OTEL_COLLECTOR_PORT_HTTP}
+        cors:
+          allowed_origins:
+            - "http://*"
+            - "https://*"
+
+exporters:
+  awsxray:
+    region: ${env:AWS_REGION}
+    index_all_attributes: true
+
+  awsemf:
+    region: ${env:AWS_REGION}
+    namespace: OpenTelemetryDemo
+    dimension_rollup_option: NoDimensionRollup
+    resource_to_telemetry_conversion:
+      enabled: true
+
+  awscloudwatchlogs:
+    region: ${env:AWS_REGION}
+    log_group_name: /aws/opentelemetry-demo
+
+  debug:
+
+processors:
+  batch:
+    timeout: 1s
+    send_batch_size: 50
+  memory_limiter:
+    check_interval: 5s
+    limit_percentage: 80
+    spike_limit_percentage: 25
+  resourcedetection:
+    detectors: [env, eks, ec2, system]
+    timeout: 2s
+
+service:
+  pipelines:
+    traces:
+      receivers: [otlp]
+      processors: [memory_limiter, batch, resourcedetection]
+      exporters: [awsxray, debug]
+    metrics:
+      receivers: [otlp]
+      processors: [memory_limiter, batch, resourcedetection]
+      exporters: [awsemf, debug]
+    logs:
+      receivers: [otlp]
+      processors: [memory_limiter, batch, resourcedetection]
+      exporters: [awscloudwatchlogs, debug]
