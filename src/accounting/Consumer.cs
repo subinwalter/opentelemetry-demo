@@ -156,7 +156,7 @@ internal class Consumer : IDisposable
         }
         catch (Exception ex)
         {
-            _logger.LogError(ex, "Order processing failed");
+            _logger.LogError(ex, "Order processing failed: {Message}", ex.Message);
         }
     }
 
@@ -184,7 +184,7 @@ internal class Consumer : IDisposable
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogError(ex, "Failed to leak connection");
+                    _logger.LogError(ex, "Failed to get connection: {Message}", ex.Message);
                 }
             });
         }
@@ -208,7 +208,7 @@ internal class Consumer : IDisposable
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogError(ex, "Idle connection failed");
+                    _logger.LogError(ex, "Connection failed: {Message}", ex.Message);
                 }
             });
         }
@@ -226,7 +226,7 @@ internal class Consumer : IDisposable
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogError(ex, "Connection churn failed at iteration {Iteration}", i);
+                    _logger.LogError(ex, "Connection failed at iteration {Iteration}: {Message}", i, ex.Message);
                 }
             }
             _logger.LogWarning("Completed connection churn for order {OrderId}", orderId);
@@ -246,7 +246,7 @@ internal class Consumer : IDisposable
                 }
                 catch (Exception ex)
                 {
-                    _logger.LogError(ex, "Burst connection {Index} failed", index);
+                    _logger.LogError(ex, "Connection {Index} failed: {Message}", index, ex.Message);
                 }
             });
         }
