@@ -1,51 +1,57 @@
-# AWS CloudWatch Integration
-
-## � One-Command Deployment
-
-```bash
-# Set your AWS region and cluster name
-export AWS_REGION=us-west-2
-export CLUSTER_NAME=your-cluster-name
-
-# Run the deployment script
-./deploy-aws-cloudwatch.sh
-```
-
-That's it! The script automatically:
-1. ✅ Installs CloudWatch Observability Operator
-2. ✅ Applies Application Signals annotations to all supported services
-3. ✅ Configures X-Ray tracing
-4. ✅ Enables Container Insights
+# AWS CloudWatch + Application Signals Integration
 
 ## Prerequisites
 
-- kubectl configured for your EKS cluster
-- helm 3.x installed  
-- AWS CLI configured with appropriate permissions
-- OpenTelemetry Demo deployed (`kubectl apply -f kubernetes/opentelemetry-demo.yaml`)
+1. **EKS Cluster** with OIDC provider enabled
+2. **eksctl** installed ([installation guide](https://eksctl.io/installation/))
+3. **AWS CLI** configured with admin permissions
+4. **kubectl** connected to your cluster
 
-## Verify in AWS Console
+## One-Command Deployment
 
-After deployment, wait 2-5 minutes then check:
-
-- **Application Signals**: CloudWatch → Application Signals → Services
-- **X-Ray Traces**: CloudWatch → X-Ray → Traces  
-- **Investigations**: CloudWatch → Investigations
-
-## Supported Services (9 total)
-
-| Language | Services |
-|----------|----------|
-| Java | ad, fraud-detection |
-| Python | recommendation, product-reviews, load-generator |
-| Node.js | frontend, payment |
-| .NET | cart, accounting |
-
-## Need Custom Configuration?
-
-For custom OTEL Collector setup, use the AWS config file:
 ```bash
-export OTEL_COLLECTOR_CONFIG=./src/otel-collector/otelcol-config-aws.yml
+export AWS_REGION=us-west-2
+export CLUSTER_NAME=your-cluster-name
+./deploy-aws-cloudwatch.sh
 ```
 
-This config exports to AWS X-Ray (traces), CloudWatch Metrics, and CloudWatch Logs.
+The script automatically:
+1. Creates IAM service accounts with proper permissions (IRSA)
+2. Installs CloudWatch Observability **EKS Add-on**
+3. Enables Application Signals discovery
+4. Annotates services for auto-instrumentation
+5. Restarts pods to apply instrumentation
+
+## After Deployment
+
+1. **Wait 5-10 minutes** for data to appear
+2. **Generate traffic**: Browse the demo app
+3. **Check AWS Console**:
+   - CloudWatch → Application Signals → Services
+   - CloudWatch → X-Ray traces → Traces
+
+## Manual Installation (if script fails)
+
+1. **AWS Console** → EKS → Your Cluster → Add-ons
+2. Click **Get more add-ons**
+3. Select **Amazon CloudWatch Observability**
+4. Configure IAM permissions when prompted
+5. Install and wait for ACTIVE status
+
+Then run:
+```bash
+./deploy-aws-cloudwatch.sh  # Will skip add-on, just apply annotations
+```
+
+## Troubleshooting
+
+```bash
+# Check CloudWatch agent pods
+kubectl get pods -n amazon-cloudwatch
+
+# Check agent logs
+kubectl logs -n amazon-cloudwatch -l app.kubernetes.io/name=cloudwatch-agent
+
+# Verify annotations on a pod
+kubectl get pod -n otel-demo -l app=frontend -o jsonpath='{.items[0].metadata.annotations}'
+```
