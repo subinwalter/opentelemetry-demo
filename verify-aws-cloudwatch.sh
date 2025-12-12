@@ -145,6 +145,47 @@ else
 fi
 
 # ============================================================================
+# 6.5. Check Namespace Scope (Prevents cross-namespace instrumentation issues)
+# ============================================================================
+print_step "Checking Instrumentation Scope"
+
+# Check if target namespace has the label
+NS_LABEL=$(kubectl get namespace "$NAMESPACE" -o jsonpath='{.metadata.labels.cloudwatch-instrumentation}' 2>/dev/null) || NS_LABEL=""
+if [ "$NS_LABEL" = "enabled" ]; then
+    print_pass "Namespace $NAMESPACE has cloudwatch-instrumentation=enabled label"
+else
+    print_warn "Namespace $NAMESPACE missing cloudwatch-instrumentation label (may affect other namespaces)"
+fi
+
+# Check webhook namespaceSelector
+WEBHOOK_NAME="amazon-cloudwatch-observability-mutating-webhook-configuration"
+WEBHOOK_SELECTOR=$(kubectl get mutatingwebhookconfiguration "$WEBHOOK_NAME" \
+    -o jsonpath='{.webhooks[0].namespaceSelector.matchLabels}' 2>/dev/null) || WEBHOOK_SELECTOR=""
+
+if echo "$WEBHOOK_SELECTOR" | grep -q "cloudwatch-instrumentation"; then
+    print_pass "Webhook scoped to labeled namespaces only"
+else
+    print_warn "Webhook has no namespaceSelector (affects ALL namespaces - may break other apps)"
+    print_info "Fix: Run setup-aws-cloudwatch.sh to scope instrumentation"
+fi
+
+# Check for affected pods in other namespaces
+OTHER_NS_AFFECTED=$(kubectl get pods -A -o custom-columns="NS:.metadata.namespace,INIT:.spec.initContainers[*].name" --no-headers 2>/dev/null | \
+    grep -i "opentelemetry-auto-instrumentation" | \
+    grep -v "^$NAMESPACE " | \
+    grep -v "^amazon-cloudwatch " | head -3)
+
+if [ -n "$OTHER_NS_AFFECTED" ]; then
+    print_fail "Pods in OTHER namespaces have OTEL init containers injected:"
+    echo "$OTHER_NS_AFFECTED" | while read line; do
+        echo "    $line"
+    done
+    print_info "This may cause PYTHONPATH issues. Restart those pods after fixing webhook selector."
+else
+    print_pass "No unexpected init container injection in other namespaces"
+fi
+
+# ============================================================================
 # 7. Check Target Namespace Annotations
 # ============================================================================
 print_step "Checking Namespace $NAMESPACE Annotations"

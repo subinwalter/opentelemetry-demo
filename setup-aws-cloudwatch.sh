@@ -106,6 +106,38 @@ else
 fi
 
 # =============================================================================
+# Step 1.5: Scope Instrumentation to Target Namespace Only
+# =============================================================================
+print_step "Limiting auto-instrumentation to $NAMESPACE only..."
+
+# Label the namespace for webhook selector
+kubectl label namespace "$NAMESPACE" cloudwatch-instrumentation=enabled --overwrite 2>/dev/null && \
+    print_success "Labeled namespace $NAMESPACE with cloudwatch-instrumentation=enabled" || \
+    print_warning "Could not label namespace"
+
+# Patch the mutating webhook to only affect labeled namespaces
+# This prevents PYTHONPATH override breaking apps in other namespaces
+WEBHOOK_NAME="amazon-cloudwatch-observability-mutating-webhook-configuration"
+if kubectl get mutatingwebhookconfiguration "$WEBHOOK_NAME" >/dev/null 2>&1; then
+    # Get number of webhooks
+    WEBHOOK_COUNT=$(kubectl get mutatingwebhookconfiguration "$WEBHOOK_NAME" -o jsonpath='{.webhooks}' | python3 -c "import sys,json; print(len(json.load(sys.stdin)))" 2>/dev/null) || WEBHOOK_COUNT=5
+    
+    # Build patch for all webhooks
+    PATCH="["
+    for i in $(seq 0 $((WEBHOOK_COUNT - 1))); do
+        [ $i -gt 0 ] && PATCH="$PATCH,"
+        PATCH="$PATCH{\"op\": \"replace\", \"path\": \"/webhooks/$i/namespaceSelector\", \"value\": {\"matchLabels\": {\"cloudwatch-instrumentation\": \"enabled\"}}}"
+    done
+    PATCH="$PATCH]"
+    
+    kubectl patch mutatingwebhookconfiguration "$WEBHOOK_NAME" --type='json' -p="$PATCH" 2>/dev/null && \
+        print_success "Webhook scoped to labeled namespaces only" || \
+        print_warning "Could not patch webhook (may already be patched)"
+else
+    print_warning "Webhook not found, skipping patch"
+fi
+
+# =============================================================================
 # Step 2: Create IRSA for OTEL Collector
 # =============================================================================
 print_step "Setting up IAM Role for OTEL Collector..."
